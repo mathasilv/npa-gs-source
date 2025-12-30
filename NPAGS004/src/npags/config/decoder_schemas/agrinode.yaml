@@ -1,0 +1,102 @@
+name: "AgriNode-Direct"
+version: "1.4"
+description: "Decoder AgriNode Sincronizado com Simulador C++"
+
+# ==============================================================================
+# HEADER: Identificação da Rede
+# Coincide com o struct de envio no AgriNode_LoRaTx.cpp
+# ==============================================================================
+header:
+  fields:
+    - name: magic_byte_1
+      type: uint8
+      expected: 0xAB
+      description: "Sync 1"
+    
+    - name: magic_byte_2
+      type: uint8
+      expected: 0xCD
+      description: "Sync 2"
+    
+    - name: team_id
+      type: uint16be
+      description: "Team ID"
+      widget: card
+      format: "{}"
+
+# ==============================================================================
+# PAYLOAD: Dados dos Sensores
+# Coincide com a função _createBinaryPayload()
+# ==============================================================================
+payload:
+  - name: node_data
+    fields:
+      # --- IDENTIFICADOR (CRÍTICO PARA MULTI-NÓ) ---
+      - name: node_id
+        type: uint16be
+        description: "Seletor de Nó"
+        role: identifier
+        # Alterado de 'card' para 'node_selector' para ativar a filtragem dinâmica
+        widget: node_selector 
+        format: "{}"
+
+      # --- SENSORES AMBIENTAIS ---
+      - name: soil_moisture
+        type: uint8
+        description: "Umidade do Solo"
+        unit: "%"
+        widget: gauge
+        min: 0
+        max: 100
+        format: "{}"
+      
+      - name: temperature
+        type: int16be
+        description: "Temperatura"
+        unit: "°C"
+        # Lógica: (raw * scale) + offset
+        # Ex: Raw 755 -> (755 * 0.1) - 50.0 = 25.5°C
+        scale: 0.1
+        offset: -50.0
+        widget: plot
+        plot_color: "#FF5555"
+        format: "{:.1f}"
+      
+      - name: humidity
+        type: uint8
+        description: "Umidade do Ar"
+        unit: "%"
+        widget: plot
+        plot_color: "#55AAFF"
+        format: "{}"
+      
+      # --- STATUS E DIAGNÓSTICO ---
+      - name: irrigation_status
+        type: uint8
+        description: "Status Irrigação"
+        widget: led
+        # Mapeia valores numéricos para texto e cores
+        mapping:
+          0: "OFF"
+          1: "ON"
+          2: "ERRO"
+        colors:
+          0: "#555555"    # Cinza Desligado
+          1: "#00FF00"    # Verde Ligado
+          2: "#FF0000"    # Vermelho Alerta
+
+      - name: rssi_sim
+        type: uint8
+        description: "RSSI (Sim)"
+        unit: "dBm"
+        # Recupera valor negativo (Ex: 0 -> -128dBm)
+        offset: -128
+        widget: plot
+        plot_color: "#FFAA00"
+        format: "{}"
+      
+      - name: timestamp
+        type: uint32be
+        description: "Timestamp"
+        unit: "s"
+        widget: card
