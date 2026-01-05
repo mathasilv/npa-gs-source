@@ -1,0 +1,121 @@
+[project]
+name = "npags"
+version = "5.6.0"
+description = "NPA Ground Station - Estação terrestre para telemetria LoRa"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "NPA-UFG", email = "npa@ufg.br"}
+]
+keywords = ["telemetry", "lora", "ground-station", "satellite", "sdr"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "pyyaml>=6.0",
+    "numpy>=1.20.0",
+    "cerberus>=1.3.4",
+    "PyQt6>=6.4.0",
+    "pyqtgraph>=0.13.0",
+]
+
+[project.optional-dependencies]
+radio = []
+reports = [
+    "reportlab>=4.0.0",
+    "matplotlib>=3.7.0",
+    "py-staticmaps>=0.4.0",
+]
+build = [
+    "pyinstaller>=6.0.0",
+    "pillow>=10.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-qt>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+npags-gui = "npags.gui.main_window:main"
+npags-radio = "npags.radio.backend:main"
+
+[project.urls]
+Homepage = "https://github.com/npa-ufg/npags"
+Documentation = "https://github.com/npa-ufg/npags#readme"
+Repository = "https://github.com/npa-ufg/npags.git"
+Issues = "https://github.com/npa-ufg/npags/issues"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"npags" = [
+    "config/decoder_schemas/*.yaml",
+    "gui/assets/*.svg",
+    "gui/assets/*.png",
+    "gui/translations/*.ts",
+    "gui/translations/*.qm"
+]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+# Relaxa verificações para módulos GUI (muitos falsos positivos com PyQt6)
+[[tool.mypy.overrides]]
+module = [
+    "npags.gui.*",
+    "npags.reports.*",
+]
+disallow_untyped_defs = false
+warn_return_any = false
+check_untyped_defs = false
+# Desabilita erros comuns de PyQt6 que são falsos positivos
+disable_error_code = ["union-attr", "override", "call-arg", "assignment", "arg-type", "misc", "attr-defined", "var-annotated", "index"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = [
+    "E501",   # Line too long (handled by formatter)
+    "E402",   # Module level import not at top (needed for conditional imports)
+    "E701",   # Multiple statements on one line (colon)
+    "E702",   # Multiple statements on one line (semicolon)
+    "N802",   # Function name should be lowercase (Qt overrides use camelCase)
+    "N806",   # Variable in function should be lowercase (constants)
+    "N815",   # Variable in class scope should not be mixedCase (Qt signals)
+    "I001",   # Import block is un-sorted (conflicts with grouped imports)
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311", "py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]

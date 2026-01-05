@@ -1,0 +1,284 @@
+# Decoder para AgroSat-IoT v10.9
+# Baseado em PayloadManager.cpp
+#
+# ESTRUTURA DO PAYLOAD:
+#   - Payload Satélite (34 bytes): Header(4) + SatData(30)
+#   - Payload Relay (35+N*8 bytes): Header(4) + SatData(30) + relay_count(1) + Nodes(N*8)
+#
+# O decoder detecta automaticamente qual variante baseado no tamanho.
+
+name: "AgroSat-IoT"
+version: "10.9.0"
+description: "Satélite AgroSat com Relay de Nós Terrestres"
+author: "NPA-UFG"
+
+meta:
+  endian: "big"
+  # Tamanho mínimo do payload (Header + SatData)
+  min_size: 34
+  # Tamanho máximo (sat + relay_count + 10 nodes * 8 bytes)
+  max_size: 120
+  # Payload não inclui CRC interno, mas o rádio adiciona 2 bytes de CRC
+  has_crc: false
+  # Bytes de trailer adicionados pelo rádio (CRC LoRa) - ignorados na decodificação
+  trailer_size: 2
+
+# =============================================================================
+# HEADER (4 bytes)
+# =============================================================================
+header:
+  fields:
+    - name: "sync_word"
+      type: "uint16be"
+      expected: 0x4E50
+      description: "Sync Word (NP)"
+      widget: "none"
+
+    - name: "team_id"
+      type: "uint16be"
+      description: "ID da Equipe"
+      widget: "card"
+      format: "#{}"
+      role: "identifier"
+
+# =============================================================================
+# PAYLOAD
+# =============================================================================
+payload:
+  # =========================================================================
+  # SEÇÃO 1: DADOS DO SATÉLITE (30 bytes)
+  # =========================================================================
+  - name: "satellite_data"
+    fields:
+      # --- Energia ---
+      - name: "battery"
+        type: "uint8"
+        unit: "%"
+        description: "Bateria"
+        widget: "gauge"
+        min: 0
+        max: 100
+
+      # --- Sensores Ambientais ---
+      - name: "temperature"
+        type: "int16be"
+        scale: 0.1
+        offset: -50.0
+        unit: "°C"
+        description: "Temperatura"
+        widget: "plot"
+        plot_color: "#FF5555"
+
+      - name: "pressure"
+        type: "int16be"
+        scale: 0.1
+        offset: 300.0
+        unit: "hPa"
+        description: "Pressão"
+        widget: "plot"
+        plot_color: "#55AAFF"
+
+      - name: "altitude"
+        type: "int16be"
+        unit: "m"
+        description: "Altitude Baro"
+        widget: "plot"
+        plot_color: "#FFAA00"
+
+      - name: "humidity"
+        type: "uint8"
+        unit: "%"
+        description: "Umidade"
+        widget: "gauge"
+        min: 0
+        max: 100
+
+      # --- Qualidade do Ar ---
+      - name: "co2"
+        type: "int16be"
+        unit: "ppm"
+        description: "CO₂"
+        widget: "plot"
+        plot_color: "#88FF88"
+
+      - name: "tvoc"
+        type: "int16be"
+        unit: "ppb"
+        description: "TVOC"
+        widget: "plot"
+        plot_color: "#FF88FF"
+
+      # --- IMU: Giroscópio (scale 2.0 = 1/0.5) ---
+      - name: "gyro_x"
+        type: "int8"
+        scale: 2.0
+        unit: "°/s"
+        description: "Gyro X"
+        widget: "plot"
+        plot_color: "#FF6666"
+
+      - name: "gyro_y"
+        type: "int8"
+        scale: 2.0
+        unit: "°/s"
+        description: "Gyro Y"
+        widget: "plot"
+        plot_color: "#66FF66"
+
+      - name: "gyro_z"
+        type: "int8"
+        scale: 2.0
+        unit: "°/s"
+        description: "Gyro Z"
+        widget: "plot"
+        plot_color: "#6666FF"
+
+      # --- IMU: Acelerômetro (scale 0.0625 = 1/16) ---
+      - name: "accel_x"
+        type: "int8"
+        scale: 0.0625
+        unit: "g"
+        description: "Accel X"
+        widget: "plot"
+        plot_color: "#FFAA55"
+
+      - name: "accel_y"
+        type: "int8"
+        scale: 0.0625
+        unit: "g"
+        description: "Accel Y"
+        widget: "plot"
+        plot_color: "#55FFAA"
+
+      - name: "accel_z"
+        type: "int8"
+        scale: 0.0625
+        unit: "g"
+        description: "Accel Z"
+        widget: "plot"
+        plot_color: "#AA55FF"
+
+      # --- GPS ---
+      - name: "latitude"
+        type: "int32be"
+        scale: 0.0000001
+        unit: "°"
+        description: "Latitude"
+        widget: "card"
+        format: "{:.6f}"
+
+      - name: "longitude"
+        type: "int32be"
+        scale: 0.0000001
+        unit: "°"
+        description: "Longitude"
+        widget: "card"
+        format: "{:.6f}"
+
+      - name: "gps_altitude"
+        type: "uint16be"
+        unit: "m"
+        description: "Alt. GPS"
+        widget: "plot"
+        plot_color: "#AAFFAA"
+
+      - name: "satellites"
+        type: "uint8"
+        description: "Satélites"
+        widget: "gauge"
+        min: 0
+        max: 12
+
+      - name: "system_status"
+        type: "uint8"
+        description: "Status"
+        widget: "led"
+        mapping:
+          0: "NOMINAL"
+          1: "ALERTA"
+          2: "CRÍTICO"
+          3: "OFFLINE"
+        colors:
+          0: "#00FF00"
+          1: "#FFAA00"
+          2: "#FF0000"
+          3: "#555555"
+
+      # --- Widget Virtual: Mapa GPS ---
+      - name: "gps_map"
+        type: "virtual"
+        widget: "map"
+        description: "Mapa GPS"
+        lat_source: "latitude"
+        lon_source: "longitude"
+
+  # =========================================================================
+  # SEÇÃO 1.5: CONTADOR DE RELAY (opcional - só presente em payloads > 34 bytes)
+  # =========================================================================
+  - name: "relay_info"
+    optional: true
+    condition: "payload_size > 34"
+    fields:
+      - name: "relay_count"
+        type: "uint8"
+        description: "Nós Relay"
+        widget: "card"
+
+  # =========================================================================
+  # SEÇÃO 2: DADOS DOS NÓS RELAY (8 bytes cada)
+  # =========================================================================
+  - name: "relay_nodes"
+    is_array: true
+    count_field: "relay_info.relay_count"
+    optional: true
+    condition: "payload_size > 34"
+    fields:
+      - name: "node_id"
+        type: "uint16be"
+        description: "ID Nó"
+        widget: "node_selector"
+
+      - name: "soil_moisture"
+        type: "uint8"
+        unit: "%"
+        description: "Umidade Solo"
+        widget: "gauge"
+        min: 0
+        max: 100
+
+      - name: "ambient_temp"
+        type: "int16be"
+        scale: 0.1
+        offset: -50.0
+        unit: "°C"
+        description: "Temp. Nó"
+        widget: "plot"
+        plot_color: "#FF9900"
+
+      - name: "node_humidity"
+        type: "uint8"
+        unit: "%"
+        description: "Umidade Ar"
+        widget: "gauge"
+        min: 0
+        max: 100
+
+      - name: "irrigation_status"
+        type: "uint8"
+        description: "Irrigação"
+        widget: "led"
+        mapping:
+          0: "OFF"
+          1: "ON"
+        colors:
+          0: "#555555"
+          1: "#00FF00"
+
+      - name: "rssi"
+        type: "uint8"
+        offset: -128
+        unit: "dBm"
+        description: "RSSI"
+        widget: "gauge"
+        min: -128
+        max: 0

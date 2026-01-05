@@ -1,5 +1,0 @@
-[console_scripts]
-npags-decode = npags.cli:main
-npags-gui = npags.gui.main_window:main
-npags-radio = npags.radio.backend:main
-npags-station = npags.ground_station:main

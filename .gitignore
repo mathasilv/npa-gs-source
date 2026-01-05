@@ -1,7 +1,77 @@
-/.venv
-/NPAGS001
-/NPAGS002
-/NPAGS003
-/__pycache__
-/empacotar.py
-/projeto_completo_TUDO.txt
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# === Virtual Environments ===
+.venv/
+venv/
+ENV/
+env/
+
+# === PyInstaller ===
+*.manifest
+*.spec
+!npags.spec
+
+# === IDE ===
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# === OS ===
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# === Logs e Dados ===
+data/logs/*.jsonl
+data/logs/*.log
+*.log
+
+# === Build outputs ===
+releases/
+*.zip
+*.tar.gz
+*.exe
+*.AppImage
+
+# === Testes ===
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# === Mypy ===
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# === Continue ===
+.continue/
+.venv-build/
+*.bak

@@ -1,0 +1,99 @@
+name: "AgriNode-Direct"
+version: "2.0"
+description: "Decoder AgriNode Sincronizado com Simulador C++ (AG Protocol)"
+author: "NPA-UFG"
+
+meta:
+  endian: "big"
+  min_size: 16
+  max_size: 20
+  has_crc: false
+  trailer_size: 2
+
+# ==============================================================================
+# HEADER: Identificação da Rede (AG sync word - diferente do AgroSat)
+# ==============================================================================
+header:
+  fields:
+    - name: sync_word
+      type: uint16be
+      expected: 0x4147
+      description: "Sync Word (AG)"
+      widget: none
+    
+    - name: team_id
+      type: uint16be
+      description: "Team ID"
+      widget: card
+      format: "#{}"
+      role: identifier
+
+# ==============================================================================
+# PAYLOAD: Dados dos Sensores (16 bytes total)
+# Coincide com a função _createBinaryPayload() do AgriNode
+# ==============================================================================
+payload:
+  - name: node_data
+    fields:
+      # --- IDENTIFICADOR ---
+      - name: node_id
+        type: uint16be
+        description: "ID do Nó"
+        role: identifier
+        widget: node_selector 
+        format: "{}"
+
+      # --- SENSORES AMBIENTAIS ---
+      - name: soil_moisture
+        type: uint8
+        description: "Umidade do Solo"
+        unit: "%"
+        widget: gauge
+        min: 0
+        max: 100
+      
+      - name: temperature
+        type: int16be
+        description: "Temperatura"
+        unit: "°C"
+        scale: 0.1
+        offset: -50.0
+        widget: plot
+        plot_color: "#FF5555"
+        format: "{:.1f}"
+      
+      - name: humidity
+        type: uint8
+        description: "Umidade do Ar"
+        unit: "%"
+        widget: gauge
+        min: 0
+        max: 100
+      
+      # --- STATUS E DIAGNÓSTICO ---
+      - name: irrigation_status
+        type: uint8
+        description: "Irrigação"
+        widget: led
+        mapping:
+          0: "OFF"
+          1: "ON"
+          2: "ERRO"
+        colors:
+          0: "#555555"
+          1: "#00FF00"
+          2: "#FF0000"
+
+      - name: rssi
+        type: uint8
+        description: "RSSI"
+        unit: "dBm"
+        offset: -128
+        widget: gauge
+        min: -128
+        max: 0
+      
+      - name: timestamp
+        type: uint32be
+        description: "Timestamp"
+        widget: card
