@@ -46,7 +46,10 @@ class MultiDecoderEngine:
         
         for name in decoder_names:
             try:
-                path = self.loader.get_decoder_path(name)
+                path = self.loader.find_decoder_path(name)
+                if path is None:
+                    logger.warning("Decoder '%s' não encontrado (nem user dir, nem bundled)", name)
+                    continue
                 self.engines[name] = DecoderEngine(path)
             except Exception as e:
                 logger.warning("Falha ao carregar decoder '%s': %s", name, e)

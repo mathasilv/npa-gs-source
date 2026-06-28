@@ -92,7 +92,9 @@ class HistoryService:
             Tupla (sucesso, mensagem_erro).
         """
         try:
-            path = self._loader.get_decoder_path(decoder_name)
+            path = self._loader.find_decoder_path(decoder_name)
+            if path is None:
+                return False, f"Decoder '{decoder_name}' não encontrado"
             self.engine = DecoderEngine(path)
             self.decoder_display_name = self.engine.config.get('name', decoder_name)
             return True, ""

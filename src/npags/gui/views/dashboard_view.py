@@ -896,8 +896,8 @@ class DashboardView(QWidget):
         """Carrega um schema e reconstrói a UI."""
         try:
             loader = DecoderLoader()
-            path = loader.get_decoder_path(schema_name)
-            if not path.exists():
+            path = loader.find_decoder_path(schema_name)
+            if path is None:
                 QMessageBox.critical(
                     self, tr("Erro"),
                     f"{tr('Falha ao carregar schema:')} arquivo '{schema_name}' não encontrado."

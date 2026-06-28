@@ -202,7 +202,10 @@ class GroundStationApp(QMainWindow):
             else:
                 # Decoder unico
                 name = selected_decoders[0]
-                path = self.decoder_loader.get_decoder_path(name)
+                path = self.decoder_loader.find_decoder_path(name)
+                if path is None:
+                    self._system_log(f"Decoder '{name}' não encontrado", is_error=True)
+                    return
                 self.engine = DecoderEngine(path)
                 self._system_log(f"Decoder carregado: {name}")
                 
