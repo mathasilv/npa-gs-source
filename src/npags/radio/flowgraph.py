@@ -11,7 +11,6 @@ NOTA: Este módulo só funciona quando GNU Radio está instalado no SISTEMA.
 import logging
 import sys
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -19,24 +18,23 @@ from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
 
-# GNU Radio é instalado no sistema (pacman/apt), não via pip,
-# e o PyInstaller não inclui pacotes do sistema no bundle.
-# Adicionamos caminhos comuns do sistema para encontrar o gnuradio
-# quando o executável rodar em uma máquina com GNU Radio instalado.
-_POSSIBLE_GNURADIO_PATHS = [
-    "/usr/lib/python3/dist-packages",
-    "/usr/local/lib/python3/dist-packages",
-    "/usr/lib/python3.13/site-packages",
-    "/usr/local/lib/python3.13/site-packages",
-    "/usr/lib/python3.12/site-packages",
-    "/usr/local/lib/python3.12/site-packages",
-    "/usr/lib/python3.11/site-packages",
-    "/usr/local/lib/python3.11/site-packages",
-]
-for _p in _POSSIBLE_GNURADIO_PATHS:
-    _pp = Path(_p)
-    if _pp.is_dir() and str(_pp) not in sys.path:
-        sys.path.insert(0, str(_pp))
+# GNU Radio é instalado no sistema (pacman/apt), não via pip.
+# O PyInstaller não inclui pacotes do sistema no bundle, então
+# adicionamos dinamicamente diretórios site-packages do sistema ao
+# sys.path para encontrar o gnuradio na máquina alvo.
+import glob as _glob
+for _p in _glob.glob("/usr/lib/python3*/site-packages"):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+for _p in _glob.glob("/usr/local/lib/python3*/site-packages"):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+for _p in _glob.glob("/usr/lib/python3*/dist-packages"):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+for _p in _glob.glob("/usr/local/lib/python3*/dist-packages"):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # Importações condicionais do GNU Radio
 try:

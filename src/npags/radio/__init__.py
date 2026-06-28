@@ -10,22 +10,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 # GNU Radio é instalado no sistema (pacman/apt), não via pip.
-# Adicionamos caminhos comuns do sistema ao sys.path para que o
-# PyInstaller consiga encontrar o gnuradio quando instalado na máquina alvo.
-_POSSIBLE_GNURADIO_PATHS = [
-    "/usr/lib/python3/dist-packages",
-    "/usr/local/lib/python3/dist-packages",
-    "/usr/lib/python3.13/site-packages",
-    "/usr/local/lib/python3.13/site-packages",
-    "/usr/lib/python3.12/site-packages",
-    "/usr/local/lib/python3.12/site-packages",
-    "/usr/lib/python3.11/site-packages",
-    "/usr/local/lib/python3.11/site-packages",
-]
-for _p in _POSSIBLE_GNURADIO_PATHS:
-    _pp = Path(_p)
-    if _pp.is_dir() and str(_pp) not in sys.path:
-        sys.path.insert(0, str(_pp))
+# O PyInstaller não inclui pacotes do sistema no bundle, então
+# adicionamos dinamicamente diretórios site-packages do sistema ao
+# sys.path para encontrar o gnuradio na máquina alvo.
+import glob as _glob
+for _p in _glob.glob("/usr/lib/python3*/site-packages"):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+for _p in _glob.glob("/usr/local/lib/python3*/site-packages"):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+for _p in _glob.glob("/usr/lib/python3*/dist-packages"):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+for _p in _glob.glob("/usr/local/lib/python3*/dist-packages"):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 # UDP Receiver não depende de gnuradio
 from npags.radio.udp_receiver import UDPReceiver
