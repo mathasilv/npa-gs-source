@@ -1,11 +1,12 @@
 # src/npags/decoders/loader.py
 """
 Gerenciamento e carregamento de schemas YAML para os decoders.
-Utiliza caminhos relativos ao pacote para garantir portabilidade.
+Utiliza diretório persistente do usuário para decoders customizados
+e mantém os schemas embutidos do pacote como fallback somente leitura.
 """
 
-import glob
 import logging
+import os
 from pathlib import Path
 
 import yaml
@@ -13,12 +14,36 @@ import yaml
 logger = logging.getLogger(__name__)
 
 
+def _resolve_user_decoder_dir() -> Path:
+    """
+    Retorna o diretório persistente para decoders do usuário.
+      - Linux/Mac: $XDG_DATA_HOME/npags/decoders  (padrão ~/.local/share/npags/decoders)
+      - Windows  : %APPDATA%/npags/decoders
+      - Fallback : ~/.npags/decoders
+    """
+    xdg = os.environ.get("XDG_DATA_HOME", "")
+    if xdg:
+        base = Path(xdg)
+    elif os.name == "nt":
+        appdata = os.environ.get("APPDATA", "")
+        base = Path(appdata) if appdata else Path.home()
+    else:
+        base = Path.home() / ".local" / "share"
+    return base / "npags" / "decoders"
+
+
+def _resolve_bundled_decoder_dir() -> Path:
+    """Retorna o diretório dos schemas embutidos no pacote."""
+    return Path(__file__).resolve().parent.parent / "config" / "decoder_schemas"
+
+
 class DecoderLoader:
     """
     Carrega, valida, salva e exclui arquivos de definição de decoders (.yaml).
 
     Attributes:
-        decoder_path: Caminho para o diretório de schemas.
+        decoder_path: Caminho para o diretório persistente de schemas do usuário.
+        bundled_path: Caminho para os schemas embutidos no pacote (somente leitura).
     """
 
     def __init__(self, decoder_path: Path | None = None) -> None:
@@ -27,31 +52,52 @@ class DecoderLoader:
         
         Args:
             decoder_path: Caminho customizado para os schemas. 
-                          Se None, usa o diretório padrão 'config/decoder_schemas' do pacote.
+                          Se None, usa o diretório persistente do usuário.
         """
         if decoder_path is None:
-            # Localiza a raiz do pacote 'npags' dinamicamente
-            package_root = Path(__file__).resolve().parent.parent
-            self.decoder_path = package_root / "config" / "decoder_schemas"
+            self.decoder_path = _resolve_user_decoder_dir()
         else:
             self.decoder_path = decoder_path
+
+        self.bundled_path = _resolve_bundled_decoder_dir()
         
-        # Garante a existência do diretório
         self.decoder_path.mkdir(parents=True, exist_ok=True)
-        logger.debug("DecoderLoader inicializado em: %s", self.decoder_path)
+        logger.debug("DecoderLoader: usuário=%s | bundled=%s", self.decoder_path, self.bundled_path)
 
     def scan_decoders(self) -> list[str]:
         """
         Retorna lista de nomes dos decoders disponíveis (sem a extensão .yaml).
+        Busca tanto no diretório do usuário quanto nos schemas embutidos.
+        Decoders do usuário sobrescrevem homônimos bundled.
         """
-        pattern = str(self.decoder_path / "*.yaml")
-        files = glob.glob(pattern)
-        decoder_names = [Path(f).stem for f in files]
-        logger.debug("Decoders encontrados: %s", decoder_names)
-        return decoder_names
+        seen: set[str] = set()
+        result: list[str] = []
+        for base in (self.decoder_path, self.bundled_path):
+            if not base.is_dir():
+                continue
+            for f in sorted(base.iterdir()):
+                if f.suffix == ".yaml" and f.stem not in seen:
+                    seen.add(f.stem)
+                    result.append(f.stem)
+        logger.debug("Decoders encontrados: %s", result)
+        return result
+
+    def find_decoder_path(self, decoder_name: str) -> Path | None:
+        """
+        Busca um decoder pelo nome, retornando o caminho.
+        Prioriza o diretório do usuário sobre o bundled.
+        Retorna None se não encontrado.
+        """
+        user_path = self.decoder_path / f"{decoder_name}.yaml"
+        if user_path.is_file():
+            return user_path
+        bundled_path = self.bundled_path / f"{decoder_name}.yaml"
+        if bundled_path.is_file():
+            return bundled_path
+        return None
 
     def get_decoder_path(self, decoder_name: str) -> Path:
-        """Retorna o caminho completo (Path) para um arquivo de decoder."""
+        """Retorna o caminho completo (apenas diretório do usuário) para um arquivo de decoder."""
         return self.decoder_path / f"{decoder_name}.yaml"
     
     def validate_yaml(self, content: str) -> tuple[bool, str | None]:
@@ -80,10 +126,10 @@ class DecoderLoader:
             return False, f"Erro ao salvar arquivo: {e}"
 
     def load_decoder(self, decoder_name: str) -> tuple[bool, str, str | None]:
-        """Lê o conteúdo textual de um decoder."""
+        """Lê o conteúdo textual de um decoder. Busca no user dir e no bundled."""
         try:
-            decoder_path = self.get_decoder_path(decoder_name)
-            if not decoder_path.exists():
+            decoder_path = self.find_decoder_path(decoder_name)
+            if decoder_path is None:
                 logger.warning("Decoder não encontrado: %s", decoder_name)
                 return False, "", f"Decoder '{decoder_name}' não encontrado"
             
