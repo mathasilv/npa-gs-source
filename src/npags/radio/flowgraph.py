@@ -66,41 +66,66 @@ if HAS_GNURADIO:
             self.callback = callback
             self.fft_size = fft_size
             self.num_chunks = 20  # Número de linhas FFT para acumular antes de processar
-            self.buffer: NDArray[np.complexfloating[Any, Any]] = np.empty((0,), dtype=np.complex64)
+            self._needed = fft_size * self.num_chunks
+            # Buffer pré-alocado de tamanho fixo: evita realocação a cada chunk de I/Q.
+            # Usamos um array circular via índice de escrita.
+            self._buf: NDArray[np.complexfloating[Any, Any]] = np.zeros(self._needed * 2, dtype=np.complex64)
+            self._buf_len: int = 0
             self.window: NDArray[np.floating[Any]] = np.hanning(self.fft_size)
             self.counter = 0
         
         def work(self, input_items: list[NDArray[Any]], _output_items: list[NDArray[Any]]) -> int:
             in0: NDArray[np.complexfloating[Any, Any]] = input_items[0]
-            self.buffer = np.append(self.buffer, in0)
-            
-            needed = self.fft_size * self.num_chunks
-            
-            # Se temos dados suficientes para processar um quadro
-            if len(self.buffer) >= needed:
-                proc = self.buffer[:needed]
-                self.buffer = self.buffer[needed:]
-                
-                # Decimação temporal: Processa apenas 1 a cada 3 frames para aliviar a CPU/GUI
+            n_in = len(in0)
+
+            # Cresce o buffer interno apenas se necessário (acontece raramente)
+            if self._buf_len + n_in > len(self._buf):
+                new_size = max(len(self._buf) * 2, self._buf_len + n_in)
+                new_buf = np.zeros(new_size, dtype=np.complex64)
+                new_buf[:self._buf_len] = self._buf[:self._buf_len]
+                self._buf = new_buf
+
+            self._buf[self._buf_len:self._buf_len + n_in] = in0
+            self._buf_len += n_in
+
+            # Processa quadros completos
+            while self._buf_len >= self._needed:
+                proc = self._buf[:self._needed].copy()
+                # Desloca o buffer restante para o início (sem realocar)
+                remaining = self._buf_len - self._needed
+                self._buf[:remaining] = self._buf[self._needed:self._needed + remaining]
+                self._buf_len = remaining
+
+                # Decimação temporal: processa 1 a cada 3 frames
                 self.counter += 1
                 if self.counter % 3 == 0:
-                    # Transforma tempo -> frequência (FFT)
-                    mat: NDArray[np.complexfloating[Any, Any]] = proc.reshape((self.num_chunks, self.fft_size)) * self.window
-                    fft_result = np.fft.fftshift(np.fft.fft(mat, axis=1) / self.fft_size, axes=1)
-                    # Converte para dB
+                    mat: NDArray[np.complexfloating[Any, Any]] = proc.reshape(
+                        (self.num_chunks, self.fft_size)
+                    ) * self.window
+                    fft_result = np.fft.fftshift(
+                        np.fft.fft(mat, axis=1) / self.fft_size, axes=1
+                    )
                     db: NDArray[np.floating[Any]] = 20 * np.log10(np.abs(fft_result) + 1e-12)
-                    # Envia o pico (max hold) ou média para a GUI
                     self.callback(np.max(db, axis=0))
-            
-            return len(in0)
+
+            return n_in
 
     class BridgeBlock(gr.basic_block):
         """
         Bloco adaptador que converte mensagens assíncronas do GNU Radio (PMT)
         em chamadas de função Python puras.
+
+        Args:
+            callback: Função chamada com os bytes brutos de cada pacote.
+            filter_bytes: Sequência de bytes usada para alinhar o pacote
+                          (magic/sync word). Se None, encaminha tudo (modo raw).
         """
         
-        def __init__(self, callback: Callable[[bytes], None]) -> None:
+        def __init__(
+            self,
+            callback: Callable[[bytes], None],
+            filter_bytes: bytes | None = None,
+        ) -> None:
             gr.basic_block.__init__(
                 self,
                 name="Bridge Python",
@@ -108,6 +133,7 @@ if HAS_GNURADIO:
                 out_sig=None
             )
             self.callback = callback
+            self.filter_bytes = filter_bytes
             # Registra porta de entrada de mensagens
             self.message_port_register_in(pmt.intern("in"))
             self.set_msg_handler(pmt.intern("in"), self.handle_msg)
@@ -121,12 +147,14 @@ if HAS_GNURADIO:
                 if pmt.is_u8vector(payload):
                     data = bytes(pmt.u8vector_elements(payload))
                     
-                    # Sincronização opcional: Busca por magic bytes (0xAB 0xCD)
-                    # Se seu protocolo não usa isso no início, remova esta lógica.
-                    magic = data.find(b'\xAB\xCD')
-                    if magic != -1:
-                        self.callback(data[magic:])
+                    if self.filter_bytes:
+                        # Modo filtrado: alinha pelo sync word configurável
+                        idx = data.find(self.filter_bytes)
+                        if idx != -1:
+                            self.callback(data[idx:])
+                        # Se não encontrou, descarta (ruído)
                     else:
+                        # Modo raw: encaminha tudo sem filtrar
                         self.callback(data)
                         
             except Exception as e:
@@ -149,6 +177,7 @@ if HAS_GNURADIO:
             gain: int,
             bias: bool,
             device_str: str,
+            filter_bytes: bytes | None = None,
         ) -> None:
             _check_gnuradio()  # Verifica disponibilidade
             gr.top_block.__init__(self, "AgroSat Receiver")
@@ -202,7 +231,7 @@ if HAS_GNURADIO:
             )
             
             # 3. Blocos Auxiliares (Ponte e Espectro)
-            self.bridge = BridgeBlock(pkt_cb)
+            self.bridge = BridgeBlock(pkt_cb, filter_bytes=filter_bytes)
             self.sniff = WaterfallSniffer(wf_cb, fft_size=1024)
             
             # 4. Conexões

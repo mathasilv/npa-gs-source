@@ -12,6 +12,7 @@ Extraído de dashboard_view.py para reduzir complexidade.
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
@@ -152,16 +153,11 @@ class DashboardDataManager:
                     continue
                 
                 if key not in target_buffer:
-                    target_buffer[key] = []
-                    ts_buffer[key] = []
+                    target_buffer[key] = deque(maxlen=self.history_limit)
+                    ts_buffer[key] = deque(maxlen=self.history_limit)
                 
                 target_buffer[key].append(value)
                 ts_buffer[key].append(timestamp)
-                
-                # Aplica limite
-                if len(target_buffer[key]) > self.history_limit:
-                    target_buffer[key].pop(0)
-                    ts_buffer[key].pop(0)
                 
                 target_buffer[f"{key}_last"] = value
             else:
@@ -198,15 +194,11 @@ class DashboardDataManager:
                 mapped_key = self.FIELD_MAPPING.get(key, key)
                 
                 if mapped_key not in target_buffer:
-                    target_buffer[mapped_key] = []
-                    ts_buffer[mapped_key] = []
+                    target_buffer[mapped_key] = deque(maxlen=self.history_limit)
+                    ts_buffer[mapped_key] = deque(maxlen=self.history_limit)
                 
                 target_buffer[mapped_key].append(value)
                 ts_buffer[mapped_key].append(timestamp)
-                
-                if len(target_buffer[mapped_key]) > self.history_limit:
-                    target_buffer[mapped_key].pop(0)
-                    ts_buffer[mapped_key].pop(0)
                 
                 target_buffer[f"{mapped_key}_last"] = value
     
@@ -243,15 +235,11 @@ class DashboardDataManager:
         for key, value in node_data.items():
             if isinstance(value, (int, float)):
                 if key not in target_buffer:
-                    target_buffer[key] = []
-                    ts_buffer[key] = []
+                    target_buffer[key] = deque(maxlen=self.history_limit)
+                    ts_buffer[key] = deque(maxlen=self.history_limit)
                 
                 target_buffer[key].append(value)
                 ts_buffer[key].append(timestamp)
-                
-                if len(target_buffer[key]) > self.history_limit:
-                    target_buffer[key].pop(0)
-                    ts_buffer[key].pop(0)
                 
                 target_buffer[f"{key}_last"] = value
     
@@ -260,28 +248,29 @@ class DashboardDataManager:
         Obtém dados combinados: satélite + nó selecionado.
         
         Returns:
-            Tupla (dados, timestamps).
+            Tupla (dados, timestamps). Valores de séries temporais são listas
+            normais (convertidas de deque) para compatibilidade com widgets.
         """
         # Começa com dados do satélite
-        result = {}
-        result_ts = {}
+        result: Dict[str, Any] = {}
+        result_ts: Dict[str, List[datetime]] = {}
         
         sat_data = self.data_buffer.get("_satellite", {})
         sat_ts = self.timestamp_buffer.get("_satellite", {})
-        result.update(sat_data)
-        result_ts.update(sat_ts)
+        # Converte deque → list para que os widgets possam usar indexação normal
+        for k, v in sat_data.items():
+            result[k] = list(v) if isinstance(v, deque) else v
+        for k, v in sat_ts.items():
+            result_ts[k] = list(v) if isinstance(v, deque) else v
         
-        # Adiciona dados do nó selecionado
+        # Adiciona dados do nó selecionado (sem sobrescrever satélite)
         node_data, node_ts = self._get_node_data()
-        
-        # Adiciona sem sobrescrever dados do satélite
         for key, value in node_data.items():
             if key not in result:
-                result[key] = value
-        
+                result[key] = list(value) if isinstance(value, deque) else value
         for key, value in node_ts.items():
             if key not in result_ts:
-                result_ts[key] = value
+                result_ts[key] = list(value) if isinstance(value, deque) else value
         
         return result, result_ts
     

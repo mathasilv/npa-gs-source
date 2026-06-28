@@ -89,9 +89,12 @@ class MultiDecoderEngine:
         candidates = []
         
         for name, engine in self.engines.items():
-            # Verifica se o sync_word existe no pacote
+            # Verifica se o sync_word foi encontrado no pacote.
+            # _find_sync_word retorna 0 tanto quando não há sync_word configurado
+            # quanto quando ele está no início — portanto só descartamos o decoder
+            # se o offset calculado ultrapassar o tamanho do pacote.
             sync_offset = engine._find_sync_word(data)
-            if sync_offset < 0 or sync_offset >= len(data):
+            if sync_offset >= len(data):
                 continue
                 
             # Calcula tamanho efetivo

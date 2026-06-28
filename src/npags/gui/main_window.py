@@ -1,5 +1,5 @@
 
-"""""
+"""
 Interface principal da Ground Station.
 Integração com Dashboard Data-Driven e navegação entre telas.
 Refatorado para modularidade e limpeza.
@@ -409,9 +409,6 @@ def main():
     window = GroundStationApp()
     window.show()
     sys.exit(app.exec())
-
-if __name__ == '__main__':
-    main()
 
 if __name__ == '__main__':
     main()

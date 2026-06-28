@@ -428,6 +428,8 @@ class AlertEngine(QObject):
         self.configs: dict[str, AlertConfig] = {}
         self.active_alerts: dict[str, ActiveAlert] = {}
         self._last_values: dict[str, float] = {}
+        # Rastreia quais campos já estão em violação ativa (evita flood de notificações)
+        self._in_violation: dict[str, str] = {}  # field_name -> violation_type
 
         # Histórico de alertas
         self.history: list[AlertHistoryEntry] = []
@@ -449,6 +451,7 @@ class AlertEngine(QObject):
             del self.configs[field_name]
         if field_name in self.active_alerts:
             del self.active_alerts[field_name]
+        self._in_violation.pop(field_name, None)
         self.alerts_changed.emit()
 
     def get_config(self, field_name: str) -> AlertConfig | None:
@@ -498,35 +501,47 @@ class AlertEngine(QObject):
             violation = 'max'
 
         if violation:
-            # Cria ou atualiza alerta ativo
+            # Detecta transição normal→violação ou mudança de tipo de violação
+            prev_violation = self._in_violation.get(field_name)
+            is_new_violation = prev_violation != violation
 
-            alert = ActiveAlert(
-                config=config,
-                triggered_at=datetime.now(),  # Sempre usa timestamp atual
-                current_value=val,
-                violation_type=violation,
-                acknowledged=False
-            )
+            now = datetime.now()
+            if is_new_violation:
+                # Novo disparo: cria alerta com timestamp de início
+                alert = ActiveAlert(
+                    config=config,
+                    triggered_at=now,
+                    current_value=val,
+                    violation_type=violation,
+                    acknowledged=False
+                )
+                self._in_violation[field_name] = violation
+            else:
+                # Violação contínua: apenas atualiza o valor atual no alerta existente
+                alert = self.active_alerts[field_name]
+                alert.current_value = val
+
             self.active_alerts[field_name] = alert
 
-            # Registra TODA violação no histórico
-            threshold = config.min_value if violation == 'min' else config.max_value
-            self._add_to_history(AlertHistoryEntry(
-                field_name=field_name,
-                description=config.description or field_name,
-                triggered_at=alert.triggered_at,
-                cleared_at=None,
-                value=val,
-                threshold=threshold,
-                violation_type=violation,
-                severity=config.severity
-            ))
+            if is_new_violation:
+                # Registra no histórico apenas na transição
+                threshold = config.min_value if violation == 'min' else config.max_value
+                self._add_to_history(AlertHistoryEntry(
+                    field_name=field_name,
+                    description=config.description or field_name,
+                    triggered_at=alert.triggered_at,
+                    cleared_at=None,
+                    value=val,
+                    threshold=threshold,
+                    violation_type=violation,
+                    severity=config.severity
+                ))
 
-            # Emite notificação A CADA pacote em violação
-            self.alert_triggered.emit(alert)
-            self._play_sound(config)
+                # Emite notificação apenas na transição
+                self.alert_triggered.emit(alert)
+                self._play_sound(config)
+                self.alerts_changed.emit()
 
-            self.alerts_changed.emit()
             return alert
         else:
             # Valor voltou ao normal
@@ -534,6 +549,7 @@ class AlertEngine(QObject):
                 # Atualiza histórico com horário de resolução
                 self._update_history_cleared(field_name)
                 del self.active_alerts[field_name]
+                self._in_violation.pop(field_name, None)
                 self.alert_cleared.emit(field_name)
                 self.alerts_changed.emit()
 
@@ -589,6 +605,7 @@ class AlertEngine(QObject):
         for field_name in self.active_alerts:
             self._update_history_cleared(field_name)
         self.active_alerts.clear()
+        self._in_violation.clear()
         self.alerts_changed.emit()
 
     def _add_to_history(self, entry: AlertHistoryEntry) -> None:
@@ -627,29 +644,40 @@ class AlertEngine(QObject):
 
         self._last_sound_time = now
 
-        # Tenta diferentes métodos para tocar som
-        try:
-            # Método 1: paplay (PulseAudio) - comum no Linux
-            subprocess.Popen(
-                ['paplay', '/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga'],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-        except FileNotFoundError:
+        # Tenta diferentes métodos para tocar som.
+        # O processo é iniciado com close_fds=True e imediatamente aguardado
+        # com um timeout curto para evitar acúmulo de processos zumbis.
+        _SOUND_CMDS = [
+            ['paplay', '/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga'],
+            ['aplay', '-q', '/usr/share/sounds/alsa/Front_Center.wav'],
+        ]
+        for cmd in _SOUND_CMDS:
             try:
-                # Método 2: aplay (ALSA)
-                subprocess.Popen(
-                    ['aplay', '-q', '/usr/share/sounds/alsa/Front_Center.wav'],
+                proc = subprocess.Popen(
+                    cmd,
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
+                    stderr=subprocess.DEVNULL,
+                    close_fds=True,
                 )
-            except FileNotFoundError:
+                # Aguarda no máximo 3 s para o processo de som terminar;
+                # se demorar mais, o mata para não acumular zumbis.
                 try:
-                    # Método 3: beep do terminal
-                    sys.stdout.write('\a')
-                    sys.stdout.flush()
-                except Exception:
-                    pass  # Erro de som/arquivo ignorado
+                    proc.wait(timeout=3.0)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                return  # Som tocado com sucesso — não tenta o próximo
+            except FileNotFoundError:
+                continue  # Programa não instalado, tenta o próximo
+            except OSError:
+                continue
+
+        # Fallback: beep do terminal
+        try:
+            sys.stdout.write('\a')
+            sys.stdout.flush()
+        except Exception:
+            pass
 
     def save_configs(self, filepath: str) -> None:
         """Salva configurações em arquivo JSON."""
@@ -659,13 +687,10 @@ class AlertEngine(QObject):
 
     def load_configs(self, filepath: str) -> None:
         """Carrega configurações de arquivo JSON."""
-        try:
-            with open(filepath, encoding='utf-8') as f:
-                data = json.load(f)
-            self.configs.clear()
-            for item in data:
-                config = AlertConfig.from_dict(item)
-                self.configs[config.field_name] = config
-            self.alerts_changed.emit()
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass  # Erro de som/arquivo ignorado
+        with open(filepath, encoding='utf-8') as f:
+            data = json.load(f)
+        self.configs.clear()
+        for item in data:
+            config = AlertConfig.from_dict(item)
+            self.configs[config.field_name] = config
+        self.alerts_changed.emit()

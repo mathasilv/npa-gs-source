@@ -64,7 +64,9 @@ class HistoryLoaderWorker(QObject):
     
     def run(self):
         """Executa o carregamento em background."""
-        limit = self.filters['limit'] if self.filters['limit'] > 0 else float('inf')
+        raw_limit = self.filters['limit']
+        # Usa 0 como sentinela de "sem limite" para evitar int(float('inf'))
+        has_limit = raw_limit > 0
         count = 0
         
         try:
@@ -74,9 +76,11 @@ class HistoryLoaderWorker(QObject):
                 for _ in f:
                     total_lines += 1
             
+            progress_total = raw_limit if has_limit else total_lines
+            
             # Agora processa os dados
             with open(self.path, 'r', encoding='utf-8') as f:
-                for i, line in enumerate(f):
+                for line in f:
                     if self._is_cancelled:
                         break
                     
@@ -94,9 +98,9 @@ class HistoryLoaderWorker(QObject):
                             
                             # Emite progresso a cada 100 registros
                             if count % 100 == 0:
-                                self.progress.emit(count, min(int(limit), total_lines))
+                                self.progress.emit(count, progress_total)
                             
-                            if count >= limit:
+                            if has_limit and count >= raw_limit:
                                 break
                     except Exception:
                         continue
@@ -892,14 +896,19 @@ class DashboardView(QWidget):
         """Carrega um schema e reconstrói a UI."""
         try:
             loader = DecoderLoader()
-            success, _, error = loader.load_decoder(schema_name)
-            if success:
-                engine = DecoderEngine(loader.get_decoder_path(schema_name))
-                self.build_ui(engine, keep_data=keep_data)
-            else:
-                QMessageBox.critical(self, tr("Erro"), f"{tr('Falha ao carregar schema:')} {error}")
+            path = loader.get_decoder_path(schema_name)
+            if not path.exists():
+                QMessageBox.critical(
+                    self, tr("Erro"),
+                    f"{tr('Falha ao carregar schema:')} arquivo '{schema_name}' não encontrado."
+                )
+                return
+            # Instancia diretamente pelo path — evita double-open do YAML
+            engine = DecoderEngine(path)
+            self.build_ui(engine, keep_data=keep_data)
         except Exception as e:
             logging.getLogger(__name__).error("Erro fatal build_ui: %s", e)
+            QMessageBox.critical(self, tr("Erro"), f"{tr('Falha ao carregar schema:')} {e}")
 
 
 

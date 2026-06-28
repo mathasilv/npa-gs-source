@@ -5,6 +5,7 @@ Responsável por interpretar bytes brutos baseados em arquivos de configuração
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -28,20 +29,19 @@ class DecoderEngine:
         try:
             with open(config_file) as f:
                 self.config = yaml.safe_load(f)  # type: ignore
+        except OSError as e:
+            raise DecoderError(f"Falha ao abrir decoder '{config_file}': {e}") from e
+        except yaml.YAMLError as e:
+            raise DecoderError(f"YAML inválido em '{config_file}': {e}") from e
 
-            # Validação Automática
-            validator = SchemaValidator()
-            try:
-                validator.validate(self.config)
-            except ValueError as e:
-                # Converte erro do Cerberus para nossa exceção personalizada
-                raise SchemaValidationError(str(e)) from e
+        # Validação Automática — propaga SchemaValidationError sem envelopar
+        validator = SchemaValidator()
+        try:
+            validator.validate(self.config)
+        except ValueError as e:
+            raise SchemaValidationError(str(e)) from e
 
-            self._build_field_cache()
-
-        except Exception as e:
-            # Se falhar no init, propagamos o erro limpo
-            raise DecoderError(f"Falha ao carregar decoder '{config_file}': {e}") from e
+        self._build_field_cache()
 
     def _build_field_cache(self) -> None:
         """Constrói cache de campos para acesso rápido e widgets."""
@@ -78,7 +78,14 @@ class DecoderEngine:
             if field.get('name') == 'sync_word' and 'expected' in field:
                 expected = field['expected']
                 if isinstance(expected, int):
-                    sync_bytes = expected.to_bytes(2, byteorder='big')
+                    # Calcula o número mínimo de bytes necessários para representar o valor
+                    byte_length = (expected.bit_length() + 7) // 8 or 1
+                    # Usa o tamanho declarado no campo ('length'), se disponível
+                    byte_length = field.get('length', byte_length)
+                    try:
+                        sync_bytes = expected.to_bytes(byte_length, byteorder='big')
+                    except OverflowError:
+                        continue
                     idx = data.find(sync_bytes)
                     if idx >= 0:
                         return idx
@@ -236,36 +243,32 @@ class DecoderEngine:
         if not condition:
             return True
 
-        # Parse simples de condições
-        try:
-            # Substitui variáveis conhecidas
-            expr = condition.replace('payload_size', str(payload_size))
+        # Parse de condições via regex — suporta: >=, <=, !=, >, <, ==
+        # Substitui variáveis nomeadas por seus valores inteiros
+        _CONDITION_RE = re.compile(
+            r'^\s*(\w+)\s*(>=|<=|!=|>|<|==)\s*(-?\d+)\s*$'
+        )
+        _VARIABLES = {'payload_size': payload_size}
 
-            # Avalia a expressão de forma segura
-            # Suporta apenas comparações simples
-            if '>' in expr and '>=' not in expr:
-                parts = expr.split('>')
-                return int(parts[0].strip()) > int(parts[1].strip())
-            elif '>=' in expr:
-                parts = expr.split('>=')
-                return int(parts[0].strip()) >= int(parts[1].strip())
-            elif '<' in expr and '<=' not in expr:
-                parts = expr.split('<')
-                return int(parts[0].strip()) < int(parts[1].strip())
-            elif '<=' in expr:
-                parts = expr.split('<=')
-                return int(parts[0].strip()) <= int(parts[1].strip())
-            elif '==' in expr:
-                parts = expr.split('==')
-                return int(parts[0].strip()) == int(parts[1].strip())
-            elif '!=' in expr:
-                parts = expr.split('!=')
-                return int(parts[0].strip()) != int(parts[1].strip())
-            else:
-                # Condição não reconhecida, assume True
+        try:
+            m = _CONDITION_RE.match(condition)
+            if not m:
+                # Condição não reconhecida — assume True para não bloquear
                 return True
-        except (ValueError, IndexError):
-            # Erro no parse, assume True
+            var_name, op, rhs_str = m.group(1), m.group(2), m.group(3)
+            lhs = _VARIABLES.get(var_name)
+            if lhs is None:
+                return True
+            rhs = int(rhs_str)
+            return {
+                '>': lhs > rhs,
+                '<': lhs < rhs,
+                '>=': lhs >= rhs,
+                '<=': lhs <= rhs,
+                '==': lhs == rhs,
+                '!=': lhs != rhs,
+            }[op]
+        except (KeyError, ValueError):
             return True
 
     def _resolve_count(self, section: dict[str, Any], current_result: dict[str, Any]) -> int:

@@ -5,17 +5,33 @@ Implementa rotação de arquivos para evitar consumo excessivo de disco.
 """
 
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-# Diretório padrão de logs
-_LOG_DIR = Path('data/logs')
+# Diretório de dados estável, independente do CWD:
+#   - Linux/Mac: $XDG_DATA_HOME/npags  (padrão ~/.local/share/npags)
+#   - Windows  : %APPDATA%/npags
+#   - Fallback : ~/.npags
+def _resolve_log_dir() -> Path:
+    xdg = os.environ.get("XDG_DATA_HOME", "")
+    if xdg:
+        base = Path(xdg)
+    elif os.name == "nt":
+        appdata = os.environ.get("APPDATA", "")
+        base = Path(appdata) if appdata else Path.home()
+    else:
+        base = Path.home() / ".local" / "share"
+    return base / "npags" / "logs"
+
+
+_LOG_DIR: Path = _resolve_log_dir()
 _CURRENT_LOG_PATH: Path | None = None
 
 
 def get_log_directory() -> Path:
     """
-    Retorna o diretório de logs.
+    Retorna o diretório de logs (estável, independente do CWD).
 
     Returns:
         Path: Caminho do diretório de logs.
