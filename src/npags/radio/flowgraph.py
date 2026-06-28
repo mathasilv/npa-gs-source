@@ -37,17 +37,21 @@ for _p in _glob.glob("/usr/local/lib/python3*/dist-packages"):
         sys.path.insert(0, _p)
 
 # Importações condicionais do GNU Radio
+_HAS_GNURADIO_CORE = False
+_HAS_GR_LORA = False
+_HAS_OSMOSDR = False
 try:
     from gnuradio import blocks, gr
-    _ = blocks  # Necessário para gr-lora
+    _ = blocks
+    _HAS_GNURADIO_CORE = True
     import lora
+    _HAS_GR_LORA = True
     import osmosdr
+    _HAS_OSMOSDR = True
     import pmt
     HAS_GNURADIO = True
-except ImportError as e:
-    logger.warning(f"GNU Radio não disponível: {e}")
+except ImportError:
     HAS_GNURADIO = False
-    # Placeholders para evitar erros de sintaxe nas classes
     gr = None
     pmt = None
     lora = None
@@ -57,13 +61,27 @@ except ImportError as e:
 def _check_gnuradio():
     """Verifica se GNU Radio está disponível."""
     if not HAS_GNURADIO:
-        raise ImportError(
-            "GNU Radio não está disponível.\n"
-            "Para usar o modo SDR, instale GNU Radio no sistema:\n"
-            "  Arch: sudo pacman -S gnuradio gr-osmosdr\n"
-            "  Ubuntu: sudo apt install gnuradio gr-osmosdr\n"
-            "\nOu use o modo UDP Network que não requer GNU Radio."
-        )
+        msg = "Dependências SDR incompletas.\n\n"
+        if not _HAS_GNURADIO_CORE:
+            msg += (
+                "GNU Radio não encontrado. Instale:\n"
+                "  Arch: sudo pacman -S gnuradio python-gnuradio gr-osmosdr\n"
+                "  Ubuntu: sudo apt install gnuradio gr-osmosdr\n"
+            )
+        if _HAS_GNURADIO_CORE and not _HAS_GR_LORA:
+            msg += (
+                "gr-lora (módulo LoRa para GNU Radio) não encontrado.\n"
+                "Instale do AUR: yay -S gr-lora\n"
+                "Ou compile manualmente: https://github.com/rpp0/gr-lora\n"
+            )
+        if _HAS_GNURADIO_CORE and not _HAS_OSMOSDR:
+            msg += (
+                "gr-osmosdr não encontrado.\n"
+                "  Arch: sudo pacman -S gr-osmosdr\n"
+                "  Ubuntu: sudo apt install gr-osmosdr\n"
+            )
+        msg += "\nOu use o modo UDP Network que não requer SDR."
+        raise ImportError(msg)
 
 
 # As classes só são definidas se GNU Radio estiver disponível
