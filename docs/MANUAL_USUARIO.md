@@ -125,16 +125,19 @@ Após a instalação, você terá a seguinte estrutura:
 ```
 NPA-GroundStation/
 ├── NPA-GroundStation         # Executável principal (Linux)
-├── NPA-GroundStation.exe     # Executável principal (Windows)
-├── run.sh                    # Script de lançamento (Linux)
-├── run.bat                   # Script de lançamento (Windows)
-├── README.md                 # Este manual
-├── config/
-│   └── decoder_schemas/      # Arquivos de configuração de decoders
-│       ├── agrosat.yaml
-│       └── agrinode.yaml
-└── data/
-    └── logs/                 # Logs de telemetria (gerados automaticamente)
+└── MANUAL_USUARIO.md         # Este manual
+
+# Diretórios de dados do usuário (criados automaticamente):
+# Linux:   ~/.local/share/npags/
+# Windows: %APPDATA%/npags/
+#
+# ├── logs/                   # Logs de telemetria
+# └── decoders/               # Decoders YAML do usuário
+#
+# Diretório de schemas embutidos (somente leitura):
+#   bundled → npags/config/decoder_schemas/
+#             ├── agrosat.yaml
+#             └── agrinode.yaml
 ```
 
 ### 2.5 Dependências para Modo SDR (Apenas Linux)
@@ -1093,8 +1096,9 @@ O sistema permite carregar e analisar dados de sessões anteriores.
 Os dados de telemetria são salvos automaticamente em:
 
 ```
-data/logs/station_data.jsonl
+~/.local/share/npags/logs/station_data.jsonl
 ```
+(Windows: `%APPDATA%/npags/logs/station_data.jsonl`)
 
 Formato do arquivo (JSON Lines):
 ```json
@@ -1110,11 +1114,20 @@ Esta seção detalha a estrutura e opções de configuração dos arquivos de de
 
 ### 11.1 Localização dos Arquivos
 
-Os arquivos de decoder estão localizados em:
+Os arquivos de decoder são carregados de duas fontes:
 
+**Schemas embutidos (somente leitura):**
+Diretório interno do pacote, contém os decoders que acompanham o programa.
+
+**Decoders do usuário (persistente):**
 ```
-config/decoder_schemas/
+~/.local/share/npags/decoders/
 ```
+(Windows: `%APPDATA%/npags/decoders/`)
+
+Decoders criados ou editados pelo usuário são salvos neste diretório
+e persistem entre execuções. Se um decoder do usuário tiver o mesmo
+nome de um schema embutido, o decoder do usuário tem prioridade.
 
 ### 11.2 Estrutura Geral
 
@@ -1735,23 +1748,4 @@ Para suporte técnico ou dúvidas:
 
 ### Reportando Problemas
 
-Ao reportar um problema, inclua:
-
-1. Sistema operacional e versão
-2. Versão do NPA Ground Station
-3. Passos para reproduzir o problema
-4. Mensagens de erro (se houver)
-5. Arquivo de log (`data/logs/station_data.jsonl`)
-
----
-
-## Licença
-
-Este software é propriedade da NPA-UFG. Todos os direitos reservados.
-
----
-
-<p align="center">
-  <strong>NPA-UFG</strong><br>
-  Ground Station System v5.6
-</p>
+Ao re

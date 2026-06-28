@@ -21,13 +21,14 @@ Execute run.bat
 ```
 NPA-GroundStation/
 ├── NPA-GroundStation       # Executável (Linux)
-├── NPA-GroundStation.exe   # Executável (Windows)
-├── run.sh / run.bat        # Scripts de lançamento
-├── MANUAL_USUARIO.md       # Manual completo
-├── config/
-│   └── decoder_schemas/    # Configurações de decoders (editável)
-└── data/
-    └── logs/               # Logs de telemetria
+└── MANUAL_USUARIO.md       # Manual completo
+
+# Diretórios de dados do usuário (criados automaticamente):
+# Linux:   ~/.local/share/npags/
+# Windows: %APPDATA%/npags/
+#
+# ├── logs/                  # Logs de telemetria
+# └── decoders/              # Decoders YAML do usuário (persistente)
 ```
 
 ## Requisitos
