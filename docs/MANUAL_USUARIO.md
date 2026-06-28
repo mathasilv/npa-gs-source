@@ -1692,12 +1692,12 @@ Os logs do sistema são armazenados em:
 
 | Arquivo | Conteúdo |
 |---------|-----------|
-| data/logs/station_data.jsonl | Dados de telemetria |
+| ~/.local/share/npags/logs/station_data.jsonl | Dados de telemetria |
 
 Para visualizar logs em tempo real (Linux):
 
 ```bash
-tail -f data/logs/station_data.jsonl
+tail -f ~/.local/share/npags/logs/station_data.jsonl
 ```
 
 ### 12.7 Teste com Pacotes UDP
@@ -1727,7 +1727,7 @@ R: Selecione múltiplos decoders na tela principal. O sistema detectará automat
 
 **P: Os dados são salvos automaticamente?**
 
-R: Sim, todos os pacotes recebidos são salvos em `data/logs/station_data.jsonl`. Você pode carregar dados históricos a qualquer momento.
+R: Sim, todos os pacotes recebidos são salvos em `~/.local/share/npags/logs/station_data.jsonl`. Você pode carregar dados históricos a qualquer momento.
 
 **P: Posso personalizar as cores dos gráficos?**
 

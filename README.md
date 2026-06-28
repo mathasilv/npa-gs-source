@@ -80,7 +80,7 @@ O sistema suporta dois modos de recepção de dados LoRa:
 | Memória RAM | Mínimo 4GB, recomendado 8GB |
 | Hardware Opcional | RTL-SDR, HackRF ou Airspy |
 
-### 2.2 Instalação via pip
+### 2.2 Instalação
 
 ```bash
 # Clone o repositório
@@ -106,7 +106,7 @@ pip install -e ".[reports]"
 
 # Para suporte a SDR com GNU Radio
 # Arch Linux
-sudo pacman -S gnuradio gr-osmosdr
+sudo pacman -S gnuradio python-gnuradio gr-osmosdr
 
 # Ubuntu/Debian
 sudo apt install gnuradio gr-osmosdr
@@ -131,6 +131,32 @@ python -m npags.gui.main_window
 |---------|-----------|
 | `npags-gui` | Interface gráfica principal |
 | `npags-radio` | Backend de rádio (modo headless) |
+
+### 2.5 Compilando um Executável Standalone
+
+Caso prefira um executável único em vez de rodar pelo código fonte,
+é possível compilar com PyInstaller na **sua própria máquina**:
+
+```bash
+# Instale o PyInstaller
+pip install pyinstaller
+
+# Compile (executável único)
+pyinstaller --onefile --windowed \
+  --name NPA-GroundStation \
+  --add-data "src/npags/config/decoder_schemas:npags/config/decoder_schemas" \
+  --add-data "src/npags/gui/assets:npags/gui/assets" \
+  --hidden-import "npags" \
+  --collect-all "PyQt6" \
+  --paths src \
+  src/npags/gui/main_window.py
+
+# O executável será gerado em dist/NPA-GroundStation
+```
+
+> **Importante:** O executável compilado herda a versão do Python usada na compilação.
+> Se o GNU Radio estiver instalado no sistema, ele só será encontrado se as versões
+> do Python coincidirem. Por isso, compile na mesma máquina onde o programa será usado.
 
 ---
 
@@ -1040,8 +1066,9 @@ O sistema permite carregar e analisar dados de sessões anteriores.
 Os dados de telemetria são salvos automaticamente em:
 
 ```
-data/logs/station_data.jsonl
+~/.local/share/npags/logs/station_data.jsonl
 ```
+(Windows: `%APPDATA%/npags/logs/station_data.jsonl`)
 
 Formato do arquivo (JSON Lines):
 ```json
@@ -1057,11 +1084,20 @@ Esta seção detalha a estrutura e opções de configuração dos arquivos de de
 
 ### 11.1 Localização dos Arquivos
 
-Os arquivos de decoder estão localizados em:
+Os arquivos de decoder são carregados de duas fontes:
 
+**Schemas embutidos (somente leitura):**
+Diretório interno do pacote, contém os decoders que acompanham o programa.
+
+**Decoders do usuário (persistente):**
 ```
-src/npags/config/decoder_schemas/
+~/.local/share/npags/decoders/
 ```
+(Windows: `%APPDATA%/npags/decoders/`)
+
+Decoders criados ou editados pelo usuário são salvos neste diretório
+e persistem entre execuções. Se um decoder do usuário tiver o mesmo
+nome de um schema embutido, o decoder do usuário tem prioridade.
 
 ### 11.2 Estrutura Geral
 
@@ -1406,7 +1442,7 @@ Analisa logs de telemetria com estatísticas detalhadas.
 python tools/analyze_logs.py
 
 # Analisar arquivo específico
-python tools/analyze_logs.py data/logs/station_data.jsonl
+python tools/analyze_logs.py ~/.local/share/npags/logs/station_data.jsonl
 
 # Filtrar por decoder
 python tools/analyze_logs.py --filter-decoder agrosat
@@ -1422,7 +1458,7 @@ python tools/analyze_logs.py --export-csv telemetria.csv
 
 | Argumento | Descrição | Padrão |
 |-----------|-----------|--------|
-| `log_file` | Arquivo de log JSONL | data/logs/station_data.jsonl |
+| `log_file` | Arquivo de log JSONL | ~/.local/share/npags/logs/station_data.jsonl |
 | `--filter-decoder` | Filtra por decoder específico | - |
 | `--last` | Analisa apenas últimos N pacotes | - |
 | `--export-csv` | Exporta dados para arquivo CSV | - |
@@ -1458,7 +1494,7 @@ python tools/plot_telemetry.py --output telemetria.png
 
 | Argumento | Descrição | Padrão |
 |-----------|-----------|--------|
-| `log_file` | Arquivo de log JSONL | data/logs/station_data.jsonl |
+| `log_file` | Arquivo de log JSONL | ~/.local/share/npags/logs/station_data.jsonl |
 | `--decoder` | Filtra por decoder específico | - |
 | `--fields` | Lista de campos para plotar | Todos |
 | `--output`, `-o` | Salvar gráfico em arquivo | - (exibe na tela) |
@@ -1537,19 +1573,43 @@ sudo udevadm control --reload-rules
 
 **Sintoma:** Mensagem de erro ao tentar iniciar no modo SDR Radio.
 
+**Causa:** O GNU Radio precisa estar instalado no sistema e a versão
+do Python usada para executar o programa deve ser a mesma do GNU Radio.
+
 **Soluções:**
 
-1. Instale GNU Radio e gr-osmosdr:
+1. **Executando pelo código fonte (recomendado):**
+   Instale o GNU Radio e execute o programa pelo Python do sistema:
 
-```bash
-# Arch Linux
-sudo pacman -S gnuradio gr-osmosdr
+   ```bash
+   # Arch Linux
+   sudo pacman -S gnuradio python-gnuradio gr-osmosdr
+   
+   # Ubuntu/Debian
+   sudo apt install gnuradio gr-osmosdr
+   
+   # Execute pelo código fonte
+   cd npa-gs-source
+   source venv/bin/activate
+   npags-gui
+   ```
 
-# Ubuntu/Debian
-sudo apt install gnuradio gr-osmosdr
-```
+2. **Compilando executável na própria máquina:**
+   Compile o PyInstaller na mesma máquina onde o programa será usado:
 
-2. Utilize o modo UDP Network como alternativa
+   ```bash
+   pip install pyinstaller
+   pyinstaller --onefile --windowed \
+     --name NPA-GroundStation \
+     --add-data "src/npags/config/decoder_schemas:npags/config/decoder_schemas" \
+     --add-data "src/npags/gui/assets:npags/gui/assets" \
+     --hidden-import "npags" \
+     --collect-all "PyQt6" \
+     --paths src \
+     src/npags/gui/main_window.py
+   ```
+
+3. Utilize o modo **UDP Network** como alternativa (não requer GNU Radio)
 
 ### 13.2 Problemas de Decodificação
 
@@ -1633,13 +1693,15 @@ Os logs do sistema são armazenados em:
 
 | Arquivo | Conteúdo |
 |---------|----------|
-| data/logs/station_data.jsonl | Dados de telemetria |
-| data/logs/system.jsonl | Logs do sistema |
+| ~/.local/share/npags/logs/station_data.jsonl | Dados de telemetria |
+| ~/.local/share/npags/logs/system.jsonl | Logs do sistema |
+
+(Windows: `%APPDATA%/npags/logs/`)
 
 Para visualizar logs em tempo real:
 
 ```bash
-tail -f data/logs/station_data.jsonl | jq .
+tail -f ~/.local/share/npags/logs/station_data.jsonl | jq .
 ```
 
 ### 13.5 Teste com Pacotes UDP
@@ -1707,6 +1769,10 @@ sequenceDiagram
 
 ### 14.3 Estrutura de Diretórios
 
+> Diretórios de dados do usuário (logs, decoders) ficam em:
+> - Linux: `~/.local/share/npags/`
+> - Windows: `%APPDATA%/npags/`
+
 ```
 NPAGS004/
 ├── src/npags/
@@ -1752,12 +1818,9 @@ NPAGS004/
 │   │   └── generator.py
 │   │
 │   └── config/
-│       └── decoder_schemas/
+│       └── decoder_schemas/          # Schemas bundled (somente leitura)
 │           ├── agrosat.yaml
 │           └── agrinode.yaml
-│
-├── data/
-│   └── logs/
 │
 ├── tools/
 │   ├── send_test_packet.py
@@ -1801,7 +1864,7 @@ for field_name, config in engine.field_cache.items():
 | Variável | Descrição | Valor Padrão |
 |----------|-----------|---------------|
 | NPAGS_LOG_LEVEL | Nível de log | INFO |
-| NPAGS_LOG_DIR | Diretório de logs | data/logs |
+| NPAGS_LOG_DIR | Diretório de logs | ~/.local/share/npags/logs |
 
 ### 14.6 Parâmetros LoRa Suportados
 
